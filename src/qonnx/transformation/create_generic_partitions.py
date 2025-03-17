@@ -111,7 +111,7 @@ class PartitionFromLambda(Transformation):
             p_out_vi = list(map(lambda x: p_model.get_tensor_valueinfo(x), p_out))
 
             # check if partitioning is legal (i.e. creates no cycles)
-            if check:
+            if self.check:
                 to_check = [model.find_producer(x) for x in p_in]
                 while len(to_check) > 0:
                     next_to_check = []

@@ -48,10 +48,11 @@ class PartitionFromLambda(Transformation):
     * Manually define where to save the partition models
     """
 
-    def __init__(self, partitioning=lambda node: -1, partition_dir=None):
+    def __init__(self, partitioning=lambda node: -1, partition_dir=None, check = True):
         super().__init__()
         self.partitioning = partitioning
         self.partition_dir = partition_dir
+        self.check = check
 
     def apply(self, model):
         # identify partitions to create
@@ -110,19 +111,20 @@ class PartitionFromLambda(Transformation):
             p_out_vi = list(map(lambda x: p_model.get_tensor_valueinfo(x), p_out))
 
             # check if partitioning is legal (i.e. creates no cycles)
-            to_check = [model.find_producer(x) for x in p_in]
-            while len(to_check) > 0:
-                next_to_check = []
-                for node in to_check:
-                    if node is not None:
-                        assert (
-                            self.partitioning(node) != partition_id
-                        ), """cycle-free graph violated: partition depends on itself"""
-                        # print(node)
-                        predecessors = model.find_direct_predecessors(node)
-                        if predecessors is not None:
-                            next_to_check.extend(predecessors)
-                to_check = next_to_check
+            if check:
+                to_check = [model.find_producer(x) for x in p_in]
+                while len(to_check) > 0:
+                    next_to_check = []
+                    for node in to_check:
+                        if node is not None:
+                            assert (
+                                self.partitioning(node) != partition_id
+                            ), """cycle-free graph violated: partition depends on itself"""
+                            # print(node)
+                            predecessors = model.find_direct_predecessors(node)
+                            if predecessors is not None:
+                                next_to_check.extend(predecessors)
+                    to_check = next_to_check
 
             # set p graph in/out to be p_in/p_out
             while len(p_model.graph.input) > 0:

@@ -130,7 +130,7 @@ def random_string(stringLength=6):
 def interleave_matrix_outer_dim_from_partitions(matrix, n_partitions):
     """Interleave the outermost dimension of a matrix from given
     partitions (n_partitions)."""
-    if type(matrix) != np.ndarray or matrix.dtype != np.float32:
+    if type(matrix) != np.ndarray or matrix.dtype not in [np.float32, np.float16]:
         # try to convert to a float numpy array (container dtype is float)
         matrix = np.asarray(matrix, dtype=np.float32)
     shp = matrix.shape
@@ -179,7 +179,7 @@ def pad_tensor_to_multiple_of(ndarray, pad_to_dims, val=0, distr_pad=False):
     will be inserted after the existing values; otherwise it will be split
     evenly between before and after the existing values, with one extra value
     inserted after if the padding amount is not divisible by two."""
-    if type(ndarray) != np.ndarray or ndarray.dtype != np.float32:
+    if type(ndarray) != np.ndarray or ndarray.dtype not in [np.float32, np.float16]:
         # try to convert to a float numpy array (container dtype is float)
         ndarray = np.asarray(ndarray, dtype=np.float32)
     assert ndarray.ndim == len(
@@ -233,12 +233,15 @@ def gen_finn_dt_tensor(finn_dt, tensor_shape):
         int_dt = DataType["INT" + str(finn_dt.bitwidth())]
         tensor_values = np.random.randint(int_dt.min(), high=int_dt.max() + 1, size=tensor_shape)
         tensor_values = tensor_values * finn_dt.scale_factor()
-    elif finn_dt == DataType["FLOAT32"]:
+    elif finn_dt in [DataType["FLOAT32"], DataType["FLOAT16"]]:
         tensor_values = np.random.randn(*tensor_shape)
     else:
         raise ValueError("Datatype {} is not supported, no tensor could be generated".format(finn_dt))
     # always use float type as container
-    return tensor_values.astype(np.float32)
+    if finn_dt == DataType["FLOAT16"]:
+        return tensor_values.astype(np.float16)
+    else:
+        return tensor_values.astype(np.float32)
 
 
 def calculate_signed_dot_prod_range(dt_a, dt_b, len):
@@ -321,3 +324,20 @@ def sanitize_quant_values(model, node_tensors, execution_context, check_values=F
                 )
             )
     return execution_context
+
+
+def auto_pad_to_explicit_padding(autopad_str, idim_h, idim_w, k_h, k_w, stride_h, stride_w, n_dims):
+    pad_total_h = (stride_h - 1) * idim_h - stride_h + k_h
+    pad_total_w = (stride_w - 1) * idim_w - stride_w + k_w
+    pad_half_small_h = int((pad_total_h / 2))
+    pad_half_small_w = int((pad_total_w / 2))
+    pad_half_large_h = pad_total_h - pad_half_small_h
+    pad_half_large_w = pad_total_w - pad_half_small_w
+    if autopad_str == "VALID":
+        return [0 for i in range(2 * n_dims)]
+    elif autopad_str == "SAME_UPPER":
+        return [pad_half_small_h, pad_half_small_w, pad_half_large_h, pad_half_large_w]
+    elif autopad_str == "SAME_LOWER":
+        return [pad_half_large_h, pad_half_large_w, pad_half_small_h, pad_half_small_w]
+    else:
+        raise Exception("Unsupported auto_pad: " + autopad_str)

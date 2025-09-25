@@ -90,14 +90,14 @@ class Change3DTo4DTensors(Transformation):
         graph_modified = False
 
         invalid_nodes = _find_invalid_nodes(model)
-        if len(invalid_nodes) > 0:
-            warnings.warn(
-                "Transformation is not applied,\
-                 found unsupported nodes in the graph: {}.".format(
-                    invalid_nodes
-                )
-            )
-            return (model, graph_modified)
+        # if len(invalid_nodes) > 0:
+        #     warnings.warn(
+        #         "Transformation is not applied,\
+        #          found unsupported nodes in the graph: {}.".format(
+        #             invalid_nodes
+        #         )
+        #     )
+        #     return (model, graph_modified)
 
         # Infer the shapes of each tensor, remove unused tensors
         # and give each tensor a readable name
@@ -143,7 +143,9 @@ class Change3DTo4DTensors(Transformation):
         # reduce the tensor's dimension. The shape of these tensors also needs
         # to be extended
         tensors_reduced_dimension = []
+        node_ind = 0
         for n in model.graph.node:
+            node_ind += 1
             node_op_type = n.op_type
             input_shape = model.get_tensor_shape(n.input[0])
             # Find tensors that are the output of nodes that reduce the dimension
@@ -195,6 +197,13 @@ class Change3DTo4DTensors(Transformation):
                 assert list(scales.shape) == [3]
                 scales = np.append(scales, np.asarray(1.0, dtype=np.float32))
                 model.set_initializer(n.input[1], scales)
+            elif node_op_type == "Unsqueeze":
+                axes = get_by_name(n.attribute, "axes", "name").ints
+                if axes == [3]:
+                    #Remove unsqueeze on 4th dimension
+                    consumer = model.find_consumer(n.output[0])
+                    consumer.input[0] = n.input[0]
+                    model.graph.node.remove(n)
             elif node_op_type == "Resize":
                 assert "axes" not in [x.name for x in n.attribute], "%s: Axes attribute is not supported." % n.name
                 assert not (len(n.input) in (3, 4) and model.get_initializer(n.input[1]) is not None), (

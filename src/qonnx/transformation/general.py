@@ -147,6 +147,19 @@ class GiveRandomTensorNames(Transformation):
         return (model, False)
 
 
+class GiveUniqueTensorNames(Transformation):
+    """Give unique tensor names to all tensors."""
+
+    def apply(self, model):
+        names = model.get_all_tensor_names()
+        i = 0
+        for name in names:
+            model.rename_tensor(name, f"tensor_{i}")
+            i += 1
+        # return model_was_changed = False as single iteration is always enough
+        return (model, False)
+
+
 class GiveReadableTensorNames(Transformation):
     """Give more human-readable names to all internal tensors. You should
     apply GiveUniqueNodeNames prior to this transform to avoid empty node names,
@@ -155,7 +168,7 @@ class GiveReadableTensorNames(Transformation):
     def apply(self, model):
         # to ensure we can use rename_tensor safely (without renaming existing
         # tensors) we start by giving random names to all tensors
-        model = model.transform(GiveRandomTensorNames())
+        model = model.transform(GiveUniqueTensorNames())
         graph = model.graph
         for n in graph.node:
             assert n.name != "", "Found empty node name"
@@ -244,6 +257,16 @@ class SortGraph(Transformation):
         for node_idx, n in enumerate(node_list):
             node_pred = model.find_direct_predecessors(n)
             if node_pred is None:
+                if len(n.input) > 0:
+                    # check if node inputs are connected to graph inputs or initializers
+                    # if so, we can keep the node in the graph
+                    for name in n.input:
+                        if util.get_by_name(model.graph.initializer, name) or \
+                           util.get_by_name(model.graph.input, name):
+                            # this node is connected to graph inputs or initializers
+                            # so we can keep it in the graph
+                            graph_dependencies[node_idx] = set()
+                            break
                 # Will also eliminate nodes that are floating around for some reason
                 continue
 
